@@ -27,7 +27,7 @@ To use MultiMarzban, you should have:
 ## Customization
 
 You have the flexibility to customize the project to your needs:
-- Modify the Ansible and Docker Compose Configuration as per your requirements.
+- Modify the Ansible, Marzban, Docker Compose Configuration as per your requirements.
 
 ## Version Control
 
