@@ -1,0 +1,57 @@
+---
+- name: Install Marzban
+  hosts: marzban
+  become: true
+  tasks:
+    - name: Install Docker
+      ansible.builtin.apt:
+        update_cache: true
+        name: ["docker.io", "docker-compose"]
+        state: present
+
+    - name: Start Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add Marzban Data
+      ansible.builtin.copy:
+        src: ./marzban
+        dest: /var/lib
+        mode: preserve
+
+    - name: Create Assets Directory
+      ansible.builtin.file:
+        path: /var/lib/marzban/assets
+        state: directory
+        mode: "0775"
+
+    - name: Download Assets
+      ansible.builtin.get_url:
+        url: "{{ item.url }}"
+        dest: "{{ item.dest }}"
+        mode: "0600"
+      with_items:
+        - url: https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat
+          dest: /var/lib/marzban/assets/geosite.dat
+        - url: https://github.com/v2fly/geoip/releases/latest/download/geoip.dat
+          dest: /var/lib/marzban/assets/geoip.dat
+
+    - name: Create Marzban Directory
+      ansible.builtin.file:
+        path: /opt/marzban
+        state: directory
+        mode: "0775"
+
+    - name: Generate Compose File
+      ansible.builtin.template:
+        src: docker-compose.j2
+        dest: /opt/marzban/docker-compose.yml
+        mode: "0600"
+
+    - name: Start Marzban
+      community.docker.docker_compose:
+        project_src: /opt/marzban
+        pull: true
+        state: present

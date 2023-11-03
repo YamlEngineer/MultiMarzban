@@ -1,0 +1,98 @@
+services:
+  traefik:
+    image: traefik:2.10
+    container_name: traefik
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - marzban
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - traefik-certs:/letsencrypt
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      # - "--log.level=DEBUG"
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entryPoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls.certResolver=letsencrypt"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email={{ ACME_EMAIL }}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.keytype=EC384"
+
+  mysql:
+    image: mysql:8.2
+    container_name: mysql
+    volumes:
+      - mysql:/var/lib/mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: "{{ MYSQL_PASSWORD }}"
+      MYSQL_DATABASE: marzban
+    networks:
+      - marzban
+
+  phpmyadmin:
+    container_name: phpmyadmin
+    image: phpmyadmin/phpmyadmin
+    restart: always
+    environment:
+      PMA_HOST: mysql
+      MYSQL_ROOT_PASSWORD: "{{ MYSQL_PASSWORD }}"
+    networks:
+      - marzban
+    depends_on:
+      - mysql
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=marzban"
+      - "traefik.http.routers.pma.entrypoints=websecure"
+      - "traefik.http.routers.pma.rule=Host(`{{ PHPMYADMIN_HOST }}`)"
+      - "traefik.http.routers.pma.service=pma"
+      - "traefik.http.services.pma.loadbalancer.server.port=80"
+
+  marzban:
+    image: gozargah/marzban:latest
+    restart: always
+    container_name: marzban-panel
+    environment:
+      UVICORN_HOST: "0.0.0.0"
+      UVICORN_PORT: "8000"
+      SUDO_USERNAME: "{{ ADMIN_USERNAME }}"
+      SUDO_PASSWORD: "{{ ADMIN_PASSWORD }}"
+      XRAY_JSON: "/var/lib/marzban/xray_config.json"
+      XRAY_SUBSCRIPTION_URL_PREFIX: "https://{{ SUBSCRIPTION_HOST }}"
+      XRAY_ASSETS_PATH: "/var/lib/marzban/assets/"
+      SQLALCHEMY_DATABASE_URL: "mysql+pymysql://root:{{ MYSQL_PASSWORD }}@mysql/marzban"
+    volumes:
+      - /var/lib/marzban:/var/lib/marzban
+    networks:
+      - marzban
+    depends_on:
+      - mysql
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=marzban"
+      - "traefik.http.routers.panel.entrypoints=websecure"
+      - "traefik.http.routers.panel.rule=Host(`{{ PANEL_HOST }}`) || (Host(`{{ SUBSCRIPTION_HOST }}`) && PathPrefix(`/sub`))"
+      - "traefik.http.routers.panel.service=panel"
+      - "traefik.http.services.panel.loadbalancer.server.port=8000"
+
+networks:
+  marzban:
+    name: marzban
+
+volumes:
+  traefik-certs:
+    name: traefik-certs
+  mysql:
+    name: mysql
